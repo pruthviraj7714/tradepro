@@ -1,2 +1,0 @@
--- AlterTable
-ALTER TABLE "public"."Position" ALTER COLUMN "pnl" SET DATA TYPE DOUBLE PRECISION;
