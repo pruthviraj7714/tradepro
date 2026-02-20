@@ -80,7 +80,7 @@ function TradingInterface() {
   const [interval, setTicksInterval] = useState<Interval>("1m");
   const { candleData: liveCandleData, connectionStatus } = useBinanceKlines(
     selectedInstrument,
-    interval
+    interval,
   );
 
   const usdtDecimals = DecimalsMap["USDT"];
@@ -95,7 +95,7 @@ function TradingInterface() {
         `${process.env.NEXT_PUBLIC_API_URL}/api/v1/klines?asset=${selectedInstrument.toUpperCase()}&interval=${interval}&startTime=${startTime}&endTime=${endTime}&limit=1000`,
         {
           credentials: "include",
-        }
+        },
       );
 
       if (!response.ok) {
@@ -121,7 +121,7 @@ function TradingInterface() {
       toast.error(
         error.response?.data?.message ||
           error.message ||
-          "Failed to fetch chart data"
+          "Failed to fetch chart data",
       );
       return [];
     } finally {
@@ -152,7 +152,7 @@ function TradingInterface() {
 
         liveCandleData.forEach((liveCandle) => {
           const existingIndex = combined.findIndex(
-            (c) => c.time === liveCandle.time
+            (c) => c.time === liveCandle.time,
           );
           if (existingIndex >= 0) {
             combined[existingIndex] = liveCandle;
@@ -176,14 +176,14 @@ function TradingInterface() {
   const fetchUserBalanceUntilUpdated = async (
     previousBalance: number,
     retries = 5,
-    delay = 500
+    delay = 500,
   ) => {
     for (let i = 0; i < retries; i++) {
       const res = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/v1/user/balance/usd`,
         {
           credentials: "include",
-        }
+        },
       );
       const data = await res.json();
       if (data.usdBalance !== previousBalance) {
@@ -204,7 +204,7 @@ function TradingInterface() {
         {
           credentials: "include",
           method: "GET",
-        }
+        },
       );
 
       if (!res.ok) {
@@ -221,7 +221,7 @@ function TradingInterface() {
           "Failed to fetch open positions",
         {
           position: "top-center",
-        }
+        },
       );
     } finally {
       setPositionsLoading(false);
@@ -235,7 +235,7 @@ function TradingInterface() {
         `${process.env.NEXT_PUBLIC_API_URL}/api/v1/positions/closed`,
         {
           credentials: "include",
-        }
+        },
       );
 
       if (!res.ok) {
@@ -252,7 +252,7 @@ function TradingInterface() {
           "Failed to fetch closed positions",
         {
           position: "top-center",
-        }
+        },
       );
     } finally {
       setPositionsLoading(false);
@@ -403,9 +403,9 @@ function TradingInterface() {
           currentPrice,
           pnl,
         };
-      })
+      }),
     );
-  }, [latestPrices, usdtDecimals]);
+  }, [latestPrices]);
 
   useEffect(() => {
     fetchUserBalanceUntilUpdated(balance);
@@ -419,7 +419,7 @@ function TradingInterface() {
         {
           method: "POST",
           credentials: "include",
-        }
+        },
       );
 
       if (!res.ok) {
@@ -440,7 +440,7 @@ function TradingInterface() {
           "Failed to close position",
         {
           position: "top-center",
-        }
+        },
       );
     }
   };
@@ -465,17 +465,18 @@ function TradingInterface() {
             leverage: leverage,
             slippage: slippage,
           }),
-        }
+        },
       );
 
       const result = await response.json();
 
       if (response.ok) {
-        console.log("Trade created:", result);
         setMargin("");
         setLeverage(1);
         setSlippage(1);
-        toast.success("Trade created successfully!");
+        toast.success(result.message || "Order placed successfully!", {
+          position: "top-center",
+        });
 
         if (result.result) {
           setOpenPositions((prev) => [
@@ -487,12 +488,12 @@ function TradingInterface() {
         fetchUserBalanceUntilUpdated(balance);
       } else {
         toast.error(
-          `Error: ${result.error || result.message || "Failed to create trade"}`
+          `Error: ${result.error || result.message || "Failed to create order"}`,
         );
       }
     } catch (error: any) {
-      console.error("[v0] Trade creation error:", error);
-      toast.error("Failed to create trade");
+      console.error("[v0] Order creation error:", error);
+      toast.error("Failed to create order");
     } finally {
       setIsLoading(false);
     }
@@ -523,10 +524,10 @@ function TradingInterface() {
                 <div className="text-right">
                   <div className="text-2xl font-bold text-white">
                     ${currentPrice.toFixed(4)}
-                  {loading && (
-                  <span className="ml-2">
-                    <span className="inline-block w-4 h-4 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin"></span>
-                  </span>
+                    {loading && (
+                      <span className="ml-2">
+                        <span className="inline-block w-4 h-4 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin"></span>
+                      </span>
                     )}
                   </div>
                   <div
@@ -731,7 +732,7 @@ function TradingInterface() {
                           className={`font-bold text-lg ${
                             closedPositions.reduce(
                               (sum, p) => sum + p.pnl,
-                              0
+                              0,
                             ) >= 0
                               ? "text-emerald-400"
                               : "text-red-400"

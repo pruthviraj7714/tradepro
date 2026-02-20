@@ -21,7 +21,7 @@ model User {
 }
 
 model Position {
-  id         String         @id @default(uuid())
+  id         String         @id
   asset      String
   leverage   Int
   margin     Int
@@ -37,6 +37,13 @@ model Position {
   closedAt   DateTime?
 
   user User @relation(fields: [userId], references: [id])
+  @@index([userId])
+}
+
+model EventLog {
+  id          String   @id @unique
+  type        EventType
+  processedAt DateTime @default(now())
 }
 
 enum PositionStatus {
@@ -47,4 +54,9 @@ enum PositionStatus {
 enum PositionType {
   LONG
   SHORT
+}
+
+enum EventType {
+  ORDER_OPEN
+  ORDER_CLOSE
 }

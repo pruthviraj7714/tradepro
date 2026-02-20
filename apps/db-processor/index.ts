@@ -6,7 +6,11 @@ import type {
   OrderEvent,
 } from "./types/types";
 import prisma from "@repo/db";
-import { DecimalsMap} from '@repo/common';
+import { DecimalsMap } from "@repo/common";
+import type { PositionType } from "@repo/db/generated/prisma/enums";
+import pLimit from "p-limit";
+
+const limit = pLimit(10);
 
 const createConsumerGroup = async () => {
   try {
@@ -15,7 +19,7 @@ const createConsumerGroup = async () => {
       RESULTS_STREAM,
       GROUP_NAME,
       "$",
-      "MKSTREAM"
+      "MKSTREAM",
     );
   } catch (error: any) {
     if (error.message.includes("BUSYGROUP")) {
@@ -44,39 +48,62 @@ function parseStreamData(streams: any[]) {
 
 const handleInsertPlacedOrder = async (event: IPlaceOrderEvent) => {
   try {
-    if (event.type !== "ERROR") {
-      await prisma.$transaction(async (tx) => {
-        await tx.user.update({
-          where: {
-            id: event.userId,
+    await prisma.$transaction(async (tx) => {
+      const isAlreadyProcessed = await tx.$executeRaw`
+          INSERT INTO "EventLog"(id, type)
+          VALUES (${event.streamId}, 'ORDER_OPEN')
+          ON CONFLICT DO NOTHING
+        `;
+
+      if (isAlreadyProcessed === 0) {
+        console.log("Order with orderId " + event.id + " already processed");
+        return;
+      }
+
+      console.log(event);
+
+      const [user] = await tx.$queryRaw<
+        { id: string; usdBalance: number }[]
+      >`SELECT * FROM "User" WHERE id = ${event.userId} FOR UPDATE;`;
+
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      if (user.usdBalance < event.margin) {
+        throw new Error("Insufficient balance");
+      }
+
+      await tx.user.update({
+        where: {
+          id: user.id,
+        },
+        data: {
+          usdBalance: {
+            decrement: event.margin,
           },
-          data: {
-            usdBalance: {
-              decrement: event.margin,
-            },
-          },
-        });
-        if (event.type === "ERROR") return;
-        await tx.position.create({
-          data: {
-            id: event.id,
-            asset: event.asset,
-            margin: event.margin,
-            leverage: event.leverage,
-            openPrice: event.openPrice,
-            qty: event.qty,
-            slippage: event.slippage,
-            type: event.type,
-            userId: event.userId,
-            openedAt: new Date(event.openedAt),
-          },
-        });
+        },
       });
-      await redisclient.xack(RESULTS_STREAM, GROUP_NAME, event.streamId);
-      console.log(
-        "Order with orderId " + event.id + " successfully inserted into db"
-      );
-    }
+
+      await tx.position.create({
+        data: {
+          id: event.id,
+          asset: event.asset,
+          margin: event.margin,
+          leverage: event.leverage,
+          openPrice: event.openPrice,
+          qty: event.qty,
+          slippage: event.slippage,
+          type: event.type as PositionType,
+          userId: user.id,
+          openedAt: new Date(event.openedAt),
+        },
+      });
+    });
+    await redisclient.xack(RESULTS_STREAM, GROUP_NAME, event.streamId);
+    console.log(
+      "Order with orderId " + event.id + " successfully inserted into db",
+    );
   } catch (error) {
     console.error("Error while inserting in db: ", error);
   }
@@ -84,55 +111,57 @@ const handleInsertPlacedOrder = async (event: IPlaceOrderEvent) => {
 
 const handleInsertClosedOrder = async (event: ICloseOrderEvent) => {
   try {
-    if (event.type !== "ERROR") {
-      await prisma.$transaction(async (tx) => {
-        await tx.user.update({
-          where: {
-            id: event.userId,
-          },
-          data: {
-            usdBalance: event.finalBalance,
-          },
-        });
+    await prisma.$transaction(async (tx) => {
+      const [user] = await tx.$queryRaw<
+        { id: string; usdBalance: number }[]
+      >`SELECT * FROM "User" WHERE id = ${event.userId} FOR UPDATE;`;
+      if (!user) {
+        throw new Error("User not found");
+      }
 
-        const pnl = event.pnl / 10 ** DecimalsMap["USDT"]!;
-
-        await tx.position.update({
-          where: {
-            id: event.id,
-          },
-          data: {
-            userId: event.userId,
-            closedAt: new Date(event.closedAt),
-            pnl,
-            closePrice: event.closePrice,
-            status: "CLOSE",
-          },
-        });
+      await tx.user.update({
+        where: {
+          id: user.id,
+        },
+        data: {
+          usdBalance: event.finalBalance,
+        },
       });
-      await redisclient.xack(RESULTS_STREAM, GROUP_NAME, event.streamId);
-      console.log(
-        "Order with orderId " + event.id + " successfully inserted into db"
-      );
-    }
+
+      const pnl = event.pnl / 10 ** DecimalsMap["USDT"]!;
+
+      await tx.position.update({
+        where: {
+          id: event.id,
+        },
+        data: {
+          userId: event.userId,
+          closedAt: new Date(event.closedAt),
+          pnl,
+          closePrice: event.closePrice,
+          status: "CLOSE",
+        },
+      });
+    });
+    await redisclient.xack(RESULTS_STREAM, GROUP_NAME, event.streamId);
+    console.log(
+      "Order with orderId " + event.id + " successfully inserted into db",
+    );
   } catch (error) {
     console.error("Error while inserting in db: ", error);
   }
 };
 
-const handleProcessEvents = (events: OrderEvent[]) => {
-  events.forEach(async (event) => {
-    switch (event.event) {
-      case "ORDER_PLACED": {
-        await handleInsertPlacedOrder(event);
-        break;
+const handleProcessEvents = async (events: OrderEvent[]) => {
+  await Promise.all(
+    events.map((event) => {
+      if (event.event === "ORDER_PLACED") {
+        return limit(() => handleInsertPlacedOrder(event));
+      } else if (event.event === "ORDER_CLOSED") {
+        return limit(() => handleInsertClosedOrder(event));
       }
-      case "ORDER_CLOSED": {
-        await handleInsertClosedOrder(event);
-        break;
-      }
-    }
-  });
+    }),
+  );
 };
 
 async function main() {
@@ -144,12 +173,12 @@ async function main() {
     CONSUMER_NAME,
     "STREAMS",
     RESULTS_STREAM,
-    "0"
+    "0",
   );
 
   if (prevMessages && prevMessages.length > 0) {
     const data = parseStreamData(prevMessages);
-    handleProcessEvents(data);
+    await handleProcessEvents(data);
   }
 
   while (true) {
@@ -161,12 +190,13 @@ async function main() {
       5000,
       "STREAMS",
       RESULTS_STREAM,
-      ">"
+      ">",
     );
 
     if (newMessages && newMessages.length > 0) {
       const data = parseStreamData(newMessages);
-      handleProcessEvents(data);
+      console.log(data);
+      await handleProcessEvents(data);
     }
   }
 }

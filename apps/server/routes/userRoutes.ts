@@ -43,7 +43,7 @@ userRouter.post("/signup", async (req, res) => {
     const user = await prisma.user.create({
       data: {
         email,
-        usdBalance : INITIAL_USD_BALANCE * 10 ** DecimalsMap["USDT"]!
+        usdBalance: INITIAL_USD_BALANCE * 10 ** DecimalsMap["USDT"]!,
       },
     });
 
@@ -51,7 +51,7 @@ userRouter.post("/signup", async (req, res) => {
       {
         sub: user.email,
       },
-      EMAIL_JWT_SECRET
+      EMAIL_JWT_SECRET,
     );
 
     if (process.env.NODE_ENV === "production") {
@@ -90,7 +90,7 @@ userRouter.post("/signup", async (req, res) => {
       });
     } else {
       console.log(
-        `click here to login : ${BACKEND_URL}/api/v1/user/signin/post?token=${token}`
+        `click here to login : ${BACKEND_URL}/api/v1/user/signin/post?token=${token}`,
       );
     }
 
@@ -132,7 +132,7 @@ userRouter.post("/signin", async (req, res) => {
       {
         sub: existedUser.email,
       },
-      EMAIL_JWT_SECRET
+      EMAIL_JWT_SECRET,
     );
 
     if (process.env.NODE_ENV === "production") {
@@ -169,9 +169,9 @@ userRouter.post("/signin", async (req, res) => {
           </html>
         `,
       });
-    }  else {
+    } else {
       console.log(
-        `click here to login : ${BACKEND_URL}/api/v1/user/signin/post?token=${token}`
+        `click here to login : ${BACKEND_URL}/api/v1/user/signin/post?token=${token}`,
       );
     }
 
@@ -191,7 +191,7 @@ userRouter.get("/signin/post", async (req, res) => {
 
     const user = jwt.verify(token, EMAIL_JWT_SECRET) as JwtPayload;
 
-    const userEmail = user.email;
+    const userEmail = user.sub;
 
     const isUserExists = await prisma.user.findFirst({
       where: {
@@ -210,7 +210,7 @@ userRouter.get("/signin/post", async (req, res) => {
       {
         sub: isUserExists.id,
       },
-      AUTH_JWT_SECRET
+      AUTH_JWT_SECRET,
     );
 
     console.log(authToken);
@@ -238,7 +238,7 @@ userRouter.post("/signout", async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      path: "/", 
+      path: "/",
     });
 
     res.redirect(FRONTEND_URL);

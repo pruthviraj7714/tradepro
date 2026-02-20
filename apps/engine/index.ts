@@ -5,7 +5,7 @@ import {
   GROUP_NAME,
   RESULTS_STREAM,
 } from "./config";
-import fs from "fs";
+import fs, { open } from "fs";
 import type {
   IEventData,
   IOrder,
@@ -42,7 +42,7 @@ const createConsumerGroup = async () => {
       ENGINE_STREAM,
       GROUP_NAME,
       "$",
-      "MKSTREAM"
+      "MKSTREAM",
     );
   } catch (error: any) {
     if (error.message.includes("BUSYGROUP")) {
@@ -71,16 +71,15 @@ const saveSnapshot = () => {
 
 const restoreSnapshot = () => {
   try {
-    fs.readFile("./snapshot.json", "utf-8", (err, data) => {
-      if (data) {
-        const rawData = JSON.parse(data);
-        openOrders = rawData.openOrders || {};
-        balances = rawData.balances || {};
-        prices = rawData.price || {};
-        lastStreamId = rawData.lastStreamId || "0";
-        console.log("Snapshot restored at streamId:", lastStreamId);
-      }
-    });
+    if (fs.existsSync("./snapshot.json")) {
+      const data = fs.readFileSync("./snapshot.json", "utf-8");
+      const rawData = JSON.parse(data);
+      openOrders = rawData.openOrders || {};
+      balances = rawData.balances || {};
+      prices = rawData.price || {};
+      lastStreamId = rawData.lastStreamId || "0";
+      console.log("Snapshot restored at streamId:", lastStreamId);
+    }
   } catch (error) {
     console.error("Error while restoring snapshot: ", error);
   }
@@ -125,10 +124,8 @@ const autoCloseOrder = async (order: IOrder) => {
     finalBalance: balances[userId].freeMargin * 10 ** usdtDecimals,
   };
 
-  console.log(finalOrderData);
-
   openOrders[order.userId] = (openOrders[order.userId] || []).filter(
-    (odr) => odr.id !== order.id
+    (odr) => odr.id !== order.id,
   );
 
   await redisclient.xack(ENGINE_STREAM, GROUP_NAME, order.streamId);
@@ -137,7 +134,7 @@ const autoCloseOrder = async (order: IOrder) => {
     RESULTS_STREAM,
     "*",
     "data",
-    JSON.stringify(finalOrderData)
+    JSON.stringify(finalOrderData),
   );
 };
 
@@ -207,7 +204,7 @@ const processPlaceOrder = async (event: IEventData) => {
           RESULTS_STREAM,
           "*",
           "data",
-          JSON.stringify(errorData)
+          JSON.stringify(errorData),
         );
         return;
       }
@@ -227,7 +224,7 @@ const processPlaceOrder = async (event: IEventData) => {
           RESULTS_STREAM,
           "*",
           "data",
-          JSON.stringify(errorData)
+          JSON.stringify(errorData),
         );
         return;
       }
@@ -275,7 +272,7 @@ const processPlaceOrder = async (event: IEventData) => {
           RESULTS_STREAM,
           "*",
           "data",
-          JSON.stringify(errorData)
+          JSON.stringify(errorData),
         );
         return;
       }
@@ -307,16 +304,17 @@ const processPlaceOrder = async (event: IEventData) => {
 
       await redisclient.xack(ENGINE_STREAM, GROUP_NAME, event.streamId);
       lastStreamId = event.streamId;
-      await redisclient.xadd(
+      const result = await redisclient.xadd(
         RESULTS_STREAM,
         "*",
         "data",
-        JSON.stringify(orderData)
+        JSON.stringify(orderData),
       );
+      console.log(result);
     }
   } catch (error) {
     console.error(
-      "error while processing order: " + event.id + "err: " + error
+      "error while processing order: " + event.id + "err: " + error,
     );
   }
 };
@@ -328,7 +326,7 @@ const processCancelOrder = async (event: IEventData) => {
       const usdtDecimals = DecimalsMap["USDT"]!;
 
       const order = (openOrders[userId] || []).find(
-        (order) => order.id === orderId
+        (order) => order.id === orderId,
       );
 
       if (!order) {
@@ -346,7 +344,7 @@ const processCancelOrder = async (event: IEventData) => {
           RESULTS_STREAM,
           "*",
           "data",
-          JSON.stringify(errorData)
+          JSON.stringify(errorData),
         );
         return;
       }
@@ -380,6 +378,7 @@ const processCancelOrder = async (event: IEventData) => {
 
       let finalOrderData = {
         ...order,
+        userId,
         event: "ORDER_CLOSED",
         closedAt: Date.now(),
         closePrice: currentPrice * 10 ** symbolDecimals,
@@ -398,12 +397,12 @@ const processCancelOrder = async (event: IEventData) => {
         RESULTS_STREAM,
         "*",
         "data",
-        JSON.stringify(finalOrderData)
+        JSON.stringify(finalOrderData),
       );
     }
   } catch (error) {
     console.error(
-      "error while processing order: " + event.id + "err: " + error
+      "error while processing order: " + event.id + "err: " + error,
     );
   }
 };
@@ -427,16 +426,16 @@ const processEvents = async (events: IEventData[]) => {
                 decimal: event.data[val]!.decimal,
                 bid: event.data[val]!.bid,
                 ask: event.data[val]!.ask,
-              })
+              }),
           );
         }
-        handlePriceUpdate(prices);
+        await handlePriceUpdate(prices);
         await redisclient.xack(ENGINE_STREAM, GROUP_NAME, event.streamId);
         lastStreamId = event.streamId;
         break;
       }
       default: {
-        throw new Error("Unknown eventss");
+        throw new Error("Unknown events");
       }
     }
   }
@@ -444,7 +443,7 @@ const processEvents = async (events: IEventData[]) => {
 
 async function main() {
   restoreSnapshot();
-  
+
   await createConsumerGroup();
 
   const prevMessages = await redisclient.xreadgroup(
@@ -455,7 +454,7 @@ async function main() {
     5000,
     "STREAMS",
     ENGINE_STREAM,
-    lastStreamId || "0"
+    lastStreamId || "0",
   );
 
   if (prevMessages && prevMessages.length > 0) {
@@ -473,7 +472,7 @@ async function main() {
         5000,
         "STREAMS",
         ENGINE_STREAM,
-        ">"
+        ">",
       );
 
       if (newMessages && newMessages.length > 0) {
