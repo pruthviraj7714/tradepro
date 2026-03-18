@@ -83,8 +83,6 @@ function TradingInterface() {
     interval,
   );
 
-  const usdtDecimals = DecimalsMap["USDT"];
-
   const fetchChartData = async () => {
     setLoading(true);
     try {
@@ -413,6 +411,9 @@ function TradingInterface() {
   }, []);
 
   const handleCancelPosition = async (positionId: string) => {
+    if (!window.confirm("Are you sure you want to close this position?")) {
+      return;
+    }
     try {
       const res = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/api/v1/trade/close/${positionId}`,

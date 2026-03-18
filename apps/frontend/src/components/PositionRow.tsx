@@ -195,7 +195,7 @@ const PositionRow = ({
                 isOpen
                   ? new Date(position.openedAt)
                   : new Date(position.closedAt || new Date()) ||
-                      new Date(position.openedAt)
+                      new Date(position.openedAt),
               )}
             </div>
           </div>
@@ -219,8 +219,7 @@ const PositionRow = ({
                   : "text-red-600 dark:text-red-400"
               }`}
             >
-              {isProfitable ? "+" : ""}$
-              {((position.pnl || 0)).toFixed(2)}
+              {isProfitable ? "+" : ""}${(position.pnl || 0).toFixed(2)}
             </div>
           </div>
         </div>

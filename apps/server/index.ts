@@ -7,14 +7,14 @@ import assetRouter from "./routes/assetRouer";
 import redisclient from "@repo/redisclient";
 import klinesRouter from "./routes/candleRouter";
 import positionsRouter from "./routes/positionsRouter";
-import { GROUP_NAME, RESULTS_STREAM } from "./config";
+import { GROUP_NAME, PORT, RESULTS_STREAM } from "./config";
 
 const app = express();
 
 app.use(express.json());
 app.use(cookieParser());
 app.use(cors({
-  origin: "http://localhost:3001",
+  origin: "http://localhost:3006",
   credentials: true,
 }));
 
@@ -44,6 +44,6 @@ app.use("/api/v1/positions", positionsRouter);
 
 createConsumerGroup();
 
-app.listen(3000, () => {
-  console.log("server is running on port 3000");
+app.listen(PORT, () => {
+  console.log(`server is running on port ${PORT}`);
 });
